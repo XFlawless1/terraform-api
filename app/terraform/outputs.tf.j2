@@ -1,0 +1,9 @@
+output "primary_instance_ip" {
+  value = aws_instance.primary.private_ip
+}
+
+{% for i in range(config.num_replicas) %}
+output "replica_{{ i }}_instance_ip" {
+  value = aws_instance.replica_{{ i }}.private_ip
+}
+{% endfor %}

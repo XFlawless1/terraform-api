@@ -1,0 +1,56 @@
+provider "aws" {
+  region = "{{ config.aws_region }}"
+}
+
+resource "aws_security_group" "postgres" {
+  name        = "postgres-sg"
+  description = "Allow PostgreSQL and SSH traffic"
+  vpc_id      = "vpc-011dd13f07846311f"
+
+  ingress {
+    from_port   = 22
+    to_port     = 22
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  ingress {
+    from_port   = 5432
+    to_port     = 5432
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+}
+
+resource "aws_instance" "primary" {
+  ami           = "ami-04b4f1a9cf54c11d0" 
+  instance_type = "{{ config.instance_type }}"
+  key_name      = "{{ config.ssh_key_name }}"
+  subnet_id     = "{{ config.subnet_id }}"
+  vpc_security_group_ids = [aws_security_group.postgres.id]
+  
+  tags = {
+    Name = "postgres-primary"
+  }
+}
+
+{% for i in range(config.num_replicas) %}
+resource "aws_instance" "replica_{{ i }}" {
+  ami           = "ami-04b4f1a9cf54c11d0" 
+  instance_type = "{{ config.instance_type }}"
+  key_name      = "{{ config.ssh_key_name }}"
+  subnet_id     = "{{ config.subnet_id }}"
+  vpc_security_group_ids = [aws_security_group.postgres.id]
+  
+  tags = {
+    Name = "postgres-replica-{{ i+1 }}"
+  }
+}
+{% endfor %}

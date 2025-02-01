@@ -1,0 +1,125 @@
+---
+- name: Install and Configure PostgreSQL {{ postgres_version }}
+  hosts: all
+  become: yes
+  vars_files:
+    - vars.yml
+  vars:
+    primary_ip: "{{ hostvars[groups['primary'][0]]['ansible_host'] | default(groups['primary'][0]) }}"
+  tasks:
+    - name: Install required dependencies
+      apt:
+        name:
+          - postgresql-common
+          - acl
+          - python3-psycopg2
+        state: present
+        update_cache: yes
+
+    - name: Enable PostgreSQL repository
+      command: bash /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y
+      args:
+        creates: /etc/apt/sources.list.d/pgdg.list
+      ignore_errors: yes
+
+    - name: Install PostgreSQL
+      apt:
+        name: "postgresql-{{ postgres_version }}"
+        state: present
+        update_cache: yes
+
+    - name: Ensure PostgreSQL service is running and enabled
+      service:
+        name: postgresql
+        state: started
+        enabled: yes
+
+    - name: Configure PostgreSQL settings
+      lineinfile:
+        path: "/etc/postgresql/{{ postgres_version }}/main/postgresql.conf"
+        regexp: "^{{ item.key }}"
+        line: "{{ item.key }} = '{{ item.value }}'"
+      loop:
+        - { key: "max_connections", value: "{{ max_connections }}" }
+        - { key: "shared_buffers", value: "{{ shared_buffers }}" }
+        - { key: "listen_addresses", value: "*" }
+      notify: Restart PostgreSQL
+    
+    - name: Allow all incoming connections in pg_hba.conf
+      lineinfile:
+        path: "/etc/postgresql/{{ postgres_version }}/main/pg_hba.conf"
+        line: "host all all 0.0.0.0/0 md5"
+        state: present
+      notify: Restart PostgreSQL
+
+    - name: Allow replication connections in pg_hba.conf
+      lineinfile:
+        path: "/etc/postgresql/{{ postgres_version }}/main/pg_hba.conf"
+        line: "host replication {{ replication_user }} {{ item }}/32 md5"
+        state: present
+      loop: "{{ groups['replica'] }}"
+      notify: Restart PostgreSQL
+
+    - name: Set up replication user on primary node
+      postgresql_user:
+        name: "{{ replication_user }}"
+        password: "{{ replication_password }}"
+        role_attr_flags: "REPLICATION"
+        state: present
+      become_user: postgres
+      when: inventory_hostname in groups['primary']
+
+    - name: Ensure PostgreSQL primary is running before configuring replicas
+      wait_for:
+        host: "{{ primary_ip }}"
+        port: 5432
+        state: started
+        timeout: 60
+      delegate_to: "{{ item }}"
+      run_once: true
+      with_items: "{{ groups['replica'] }}"
+      
+    - name: Configure replica node
+      when: inventory_hostname in groups['replica']
+      block:
+        - name: Stop PostgreSQL service on replica
+          service:
+            name: postgresql
+            state: stopped
+
+        - name: Ensure PostgreSQL data directory is absent
+          file:
+            path: "/var/lib/postgresql/{{ postgres_version }}/main"
+            state: absent
+
+        - name: Clone data from primary
+          command: >
+            pg_basebackup -h {{ primary_ip }} 
+            -D /var/lib/postgresql/{{ postgres_version }}/main 
+            -U {{ replication_user }} 
+            -P -R --wal-method=stream
+          become: true
+          become_user: postgres
+          environment:
+            PGPASSWORD: "{{ replication_password }}"
+          register: backup_result
+          failed_when: backup_result.rc != 0
+
+        - name: Ensure PostgreSQL data directory has correct permissions
+          file:
+            path: "/var/lib/postgresql/{{ postgres_version }}/main"
+            owner: postgres
+            group: postgres
+            mode: '0700'
+
+        - name: Start PostgreSQL service on replica
+          service:
+            name: postgresql
+            state: started
+            enabled: yes
+
+  handlers:
+    - name: Restart PostgreSQL
+      service:
+        name: postgresql
+        state: restarted

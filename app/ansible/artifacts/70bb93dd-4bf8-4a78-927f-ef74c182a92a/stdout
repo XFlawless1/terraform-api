@@ -1,0 +1,8 @@
+
+PLAY [Install and Configure PostgreSQL 15] *************************************
+
+TASK [Gathering Facts] *********************************************************
+[1;31mfatal: [app/ansible/inventory/hosts]: UNREACHABLE! => {"changed": false, "msg": "Failed to connect to the host via ssh: ssh: Could not resolve hostname app/ansible/inventory/hosts: nodename nor servname provided, or not known", "unreachable": true}[0m
+
+PLAY RECAP *********************************************************************
+[0;31mapp/ansible/inventory/hosts[0m : ok=0    changed=0    [1;31munreachable=1   [0m failed=0    skipped=0    rescued=0    ignored=0   
