@@ -100,6 +100,12 @@ This ensures a controlled, repeatable, and automated infrastructure setup.
 
 ### 5. **Dynamic Configuration Updates**
 - Allow users to update Terraform configurations dynamically without manual intervention.
+- 
+### 6. **Dynamic SSH Keygen**
+- Allow users to generate ssh keys dynamically without manual intervention, i.e (Remove the hardcoded key).
+
+### 7. **Allow PublicIP Support**
+- Allow users to make their instances publically accessible.
 
 ---
 
